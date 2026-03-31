@@ -52,6 +52,11 @@ APPLE_IAP_PRIVATE_KEY_PATH=/path/to/AuthKey_ABCD123456.p8
 
 # Optional: pass key contents directly instead of a file path
 # APPLE_IAP_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n..."
+
+# Promotional Offer Signatures — optional, falls back to APPLE_IAP_KEY_ID / APPLE_IAP_PRIVATE_KEY_PATH above
+# Use these if you want a dedicated Subscription Key for promotional offer signing.
+# APPLE_IAP_PROMO_KEY_ID=ZZZZ999999
+# APPLE_IAP_PROMO_PRIVATE_KEY_PATH=/path/to/SubscriptionKey_ZZZZ999999.p8
 ```
 
 ### Webhook URL
@@ -329,6 +334,146 @@ $renewalInfo = AppleIap::decodeRenewalInfo($jwsRenewalInfoFromApp);
 echo $renewalInfo->autoRenewStatus;      // 1 = will renew, 0 = won't
 echo $renewalInfo->isInBillingRetryPeriod ? 'Retrying' : 'OK';
 ```
+
+---
+
+### Promotional Offer Signatures
+
+Promotional offers let you give discounted (or free) subscription periods to existing or lapsed subscribers. Because generating the signature requires your private key, **it must always be done on a secure server** — never on the device.
+
+#### How it works
+
+1. Your iOS app determines the user is eligible for a promotional offer.
+2. The app calls your backend to obtain a signed payload.
+3. The backend calls `AppleIap::generatePromotionalOfferSignature()` and returns the result.
+4. The iOS app passes the four values to StoreKit when initiating the purchase.
+5. Apple verifies the signature; on success the promotional price applies.
+
+#### Basic usage
+
+```php
+use Kkxdev\AppleIap\Facades\AppleIap;
+use Kkxdev\AppleIap\Exceptions\AppleIapException;
+
+$signature = AppleIap::generatePromotionalOfferSignature(
+    productIdentifier:   'com.example.app.pro.monthly',
+    offerIdentifier:     'monthly_winback_50_off',   // the code you set in App Store Connect
+    applicationUsername: $user->apple_account_token ?? '',
+);
+
+// Return this to the iOS app:
+return response()->json($signature->toArray());
+```
+
+The `toArray()` response contains exactly the four fields StoreKit requires:
+
+```json
+{
+    "keyIdentifier": "ABCD1234EF",
+    "nonce":         "3d4e5f6a-7b8c-4d9e-af01-234567890abc",
+    "timestamp":     1742904277000,
+    "signature":     "MEUCIQD3..."
+}
+```
+
+> **Note:** A new `nonce` is generated automatically on every call. Each nonce is single-use — Apple rejects duplicate nonces. Signatures expire after 24 hours.
+
+#### iOS integration (StoreKit 2)
+
+```swift
+// Fetch the signature from your server
+let sig = try await api.fetchPromotionalOfferSignature(
+    productId: "com.example.app.pro.monthly",
+    offerId:   "monthly_winback_50_off"
+)
+
+let purchaseOptions: Set<Product.PurchaseOption> = [
+    .promotionalOffer(
+        offerID:   sig.offerIdentifier,
+        keyID:     sig.keyIdentifier,
+        nonce:     UUID(uuidString: sig.nonce)!,
+        signature: Data(base64Encoded: sig.signature)!,
+        timestamp: sig.timestamp
+    ),
+    .appAccountToken(UUID(uuidString: currentUser.appleAccountToken)!)
+]
+
+let result = try await product.purchase(options: purchaseOptions)
+```
+
+#### iOS integration (StoreKit 1 / SKPaymentDiscount)
+
+```swift
+let discount = SKPaymentDiscount(
+    identifier:    "monthly_winback_50_off",
+    keyIdentifier: sig.keyIdentifier,
+    nonce:         UUID(uuidString: sig.nonce)!,
+    signature:     sig.signature,
+    timestamp:     NSNumber(value: sig.timestamp)
+)
+
+let payment = SKMutablePayment(product: skProduct)
+payment.applicationUsername = currentUser.appleAccountToken
+payment.paymentDiscount     = discount
+SKPaymentQueue.default().add(payment)
+```
+
+#### Example controller
+
+```php
+use Illuminate\Http\Request;
+use Kkxdev\AppleIap\Facades\AppleIap;
+
+class PromotionalOfferController extends Controller
+{
+    public function generate(Request $request)
+    {
+        $request->validate([
+            'product_id' => 'required|string',
+            'offer_id'   => 'required|string',
+        ]);
+
+        // Verify the user is actually eligible before signing anything.
+        $user = $request->user();
+
+        abort_unless($this->isEligible($user, $request->product_id), 403, 'Not eligible for this offer.');
+
+        $signature = AppleIap::generatePromotionalOfferSignature(
+            productIdentifier:   $request->product_id,
+            offerIdentifier:     $request->offer_id,
+            applicationUsername: $user->apple_account_token ?? '',
+        );
+
+        return response()->json($signature->toArray());
+    }
+
+    private function isEligible($user, string $productId): bool
+    {
+        // Only offer to users who have previously subscribed.
+        return $user->subscriptions()
+            ->where('apple_product_id', $productId)
+            ->whereNotNull('expired_at')
+            ->exists();
+    }
+}
+```
+
+#### Using a dedicated Subscription Key
+
+By default the package reuses the App Store Server API key (`APPLE_IAP_KEY_ID` / `APPLE_IAP_PRIVATE_KEY_PATH`). If you want a separate key downloaded from **App Store Connect → Users and Access → Keys → In-App Purchase**:
+
+```env
+APPLE_IAP_PROMO_KEY_ID=ZZZZ999999
+APPLE_IAP_PROMO_PRIVATE_KEY_PATH=/path/to/SubscriptionKey_ZZZZ999999.p8
+```
+
+#### `applicationUsername` rules
+
+| Scenario | Value to pass |
+|---|---|
+| You use `appAccountToken` UUIDs | Pass the user's UUID string (lowercase) |
+| You don't use `appAccountToken` | Pass an empty string `""` |
+| You pass `null` | **Do not do this** — causes a double separator and signature mismatch |
 
 ---
 

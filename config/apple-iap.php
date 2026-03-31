@@ -114,6 +114,30 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Promotional Offer Signatures
+    |--------------------------------------------------------------------------
+    |
+    | Server-side signature generation for subscription promotional offers.
+    | The iOS app requests a signature from your backend before calling
+    | SKPaymentDiscount (StoreKit 1) or Product.PurchaseOption.promotionalOffer
+    | (StoreKit 2).
+    |
+    | By default the same key used for the App Store Server API is reused.
+    | Set key_id / private_key_path / private_key here to use a dedicated
+    | "Subscription Key" from App Store Connect > Users and Access > Keys.
+    |
+    | @see https://developer.apple.com/documentation/storekit/generating-a-promotional-offer-signature-on-the-server
+    |
+    */
+    'promotional_offers' => [
+        // Override with a dedicated Subscription Key; null falls back to credentials above.
+        'key_id'           => env('APPLE_IAP_PROMO_KEY_ID', null),
+        'private_key_path' => env('APPLE_IAP_PROMO_PRIVATE_KEY_PATH', null),
+        'private_key'      => env('APPLE_IAP_PROMO_PRIVATE_KEY', null),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Token Cache
     |--------------------------------------------------------------------------
     |

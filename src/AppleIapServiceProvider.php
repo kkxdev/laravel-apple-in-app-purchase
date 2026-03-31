@@ -22,6 +22,7 @@ use Kkxdev\AppleIap\Support\AppStoreApiAuthenticator;
 use Kkxdev\AppleIap\Support\CircuitBreaker;
 use Kkxdev\AppleIap\Support\EnvironmentResolver;
 use Kkxdev\AppleIap\Support\NotificationTypeResolver;
+use Kkxdev\AppleIap\Support\PromotionalOfferSignatureGenerator;
 
 class AppleIapServiceProvider extends ServiceProvider
 {
@@ -84,6 +85,15 @@ class AppleIapServiceProvider extends ServiceProvider
             return new NotificationTypeResolver();
         });
 
+        $this->app->singleton(PromotionalOfferSignatureGenerator::class, function ($app) {
+            $config = $app['config']['apple-iap'];
+            return new PromotionalOfferSignatureGenerator(
+                bundleId:       $config['credentials']['bundle_id'] ?? '',
+                keyIdentifier:  $this->resolvePromoKeyId($config),
+                privateKey:     $this->resolvePromoPrivateKey($config),
+            );
+        });
+
         $this->app->singleton(AppleIapManager::class, function ($app) {
             return new AppleIapManager(
                 $app->make(ReceiptValidatorInterface::class),
@@ -91,6 +101,7 @@ class AppleIapServiceProvider extends ServiceProvider
                 $app->make(JwsVerifierInterface::class),
                 $app->make(NotificationVerifierInterface::class),
                 $app->make(NotificationTypeResolver::class),
+                $app->make(PromotionalOfferSignatureGenerator::class),
                 $app->make(Dispatcher::class),
                 $app['config']['apple-iap'],
             );
@@ -154,6 +165,41 @@ class AppleIapServiceProvider extends ServiceProvider
         );
     }
 
+    private function resolvePromoKeyId(array $config): string
+    {
+        return $config['promotional_offers']['key_id']
+            ?? $config['credentials']['key_id']
+            ?? '';
+    }
+
+    private function resolvePromoPrivateKey(array $config): string
+    {
+        // Prefer the dedicated promotional-offer key; fall back to the main API key.
+        $promoSection = $config['promotional_offers'] ?? [];
+
+        $keyContents = $promoSection['private_key'] ?? null;
+
+        if (!$keyContents) {
+            $keyPath = $promoSection['private_key_path'] ?? null;
+            if ($keyPath && file_exists($keyPath)) {
+                $keyContents = file_get_contents($keyPath) ?: null;
+            }
+        }
+
+        if (!$keyContents) {
+            $keyContents = $config['credentials']['private_key'] ?? null;
+        }
+
+        if (!$keyContents) {
+            $keyPath = $config['credentials']['private_key_path'] ?? null;
+            if ($keyPath && file_exists($keyPath)) {
+                $keyContents = file_get_contents($keyPath) ?: null;
+            }
+        }
+
+        return $keyContents ?? '';
+    }
+
     private function resolveLogger(array $config): ?\Psr\Log\LoggerInterface
     {
         if (!($config['logging']['enabled'] ?? false)) {
@@ -177,6 +223,7 @@ class AppleIapServiceProvider extends ServiceProvider
             AppStoreApiAuthenticator::class,
             EnvironmentResolver::class,
             NotificationTypeResolver::class,
+            PromotionalOfferSignatureGenerator::class,
         ];
     }
 }

@@ -16,10 +16,12 @@ use Kkxdev\AppleIap\DTO\ServerApi\ExtendRenewalDateResponse;
 use Kkxdev\AppleIap\DTO\ServerApi\RefundLookupResponse;
 use Kkxdev\AppleIap\DTO\ServerApi\TransactionHistoryRequest;
 use Kkxdev\AppleIap\DTO\ServerApi\TransactionHistoryResponse;
+use Kkxdev\AppleIap\DTO\PromotionalOfferSignature;
 use Kkxdev\AppleIap\DTO\Transaction\JwsRenewalInfo;
 use Kkxdev\AppleIap\DTO\Transaction\JwsTransaction;
 use Kkxdev\AppleIap\Events;
 use Kkxdev\AppleIap\Support\NotificationTypeResolver;
+use Kkxdev\AppleIap\Support\PromotionalOfferSignatureGenerator;
 
 /**
  * Main entry point for all Apple IAP operations.
@@ -33,6 +35,7 @@ class AppleIapManager
         private JwsVerifierInterface $jwsVerifier,
         private NotificationVerifierInterface $notificationVerifier,
         private NotificationTypeResolver $notificationResolver,
+        private PromotionalOfferSignatureGenerator $promoSignatureGenerator,
         private Dispatcher $events,
         private array $config,
     ) {
@@ -166,6 +169,43 @@ class AppleIapManager
     }
 
     // -------------------------------------------------------------------------
+    // Promotional Offer Signatures
+    // -------------------------------------------------------------------------
+
+    /**
+     * Generate a server-side signature for a promotional offer.
+     *
+     * Call this endpoint from your app when the user is eligible for a promotional offer.
+     * Return the PromotionalOfferSignature payload (or ->toArray()) to the iOS client.
+     *
+     * The client passes the four values (keyIdentifier, nonce, timestamp, signature)
+     * to StoreKit when initiating the promotional purchase.
+     *
+     * @param string      $productIdentifier  Subscription product ID (e.g. "com.example.pro.monthly").
+     * @param string      $offerIdentifier    Promotional offer code from App Store Connect.
+     * @param string      $applicationUsername Your appAccountToken UUID, or empty string if unused.
+     * @param string|null $nonce              Lowercase UUID v4. Auto-generated when null.
+     * @param int|null    $timestamp          Milliseconds since Unix epoch. Defaults to now.
+     *
+     * @see https://developer.apple.com/documentation/storekit/generating-a-promotional-offer-signature-on-the-server
+     */
+    public function generatePromotionalOfferSignature(
+        string  $productIdentifier,
+        string  $offerIdentifier,
+        string  $applicationUsername = '',
+        ?string $nonce = null,
+        ?int    $timestamp = null,
+    ): PromotionalOfferSignature {
+        return $this->promoSignatureGenerator->generate(
+            productIdentifier:   $productIdentifier,
+            offerIdentifier:     $offerIdentifier,
+            applicationUsername: $applicationUsername,
+            nonce:               $nonce,
+            timestamp:           $timestamp,
+        );
+    }
+
+    // -------------------------------------------------------------------------
     // App Store Server API (StoreKit 2)
     // -------------------------------------------------------------------------
 
@@ -237,5 +277,10 @@ class AppleIapManager
     public function notificationVerifier(): NotificationVerifierInterface
     {
         return $this->notificationVerifier;
+    }
+
+    public function promoSignatureGenerator(): PromotionalOfferSignatureGenerator
+    {
+        return $this->promoSignatureGenerator;
     }
 }
