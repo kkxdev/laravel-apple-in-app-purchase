@@ -80,7 +80,7 @@ class LegacyReceiptValidator implements ReceiptValidatorInterface
             try {
                 $response = $this->http
                     ->timeout($this->config['http']['timeout'] ?? 30)
-                    ->connectTimeout($this->config['http']['connect_timeout'] ?? 10)
+                    ->withOptions(['connect_timeout' => $this->config['http']['connect_timeout'] ?? 10])
                     ->retry(
                         $this->config['http']['retry']['times'] ?? 3,
                         $this->config['http']['retry']['sleep'] ?? 100,

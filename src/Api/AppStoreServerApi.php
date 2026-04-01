@@ -172,7 +172,7 @@ class AppStoreServerApi implements AppStoreServerApiInterface
                 $response = $this->http
                     ->withToken($this->authenticator->getBearerToken())
                     ->timeout($this->config['http']['timeout'] ?? 30)
-                    ->connectTimeout($this->config['http']['connect_timeout'] ?? 10)
+                    ->withOptions(['connect_timeout' => $this->config['http']['connect_timeout'] ?? 10])
                     ->retry(
                         $this->config['http']['retry']['times'] ?? 3,
                         $this->config['http']['retry']['sleep'] ?? 100,
@@ -195,7 +195,7 @@ class AppStoreServerApi implements AppStoreServerApiInterface
                 $response = $this->http
                     ->withToken($this->authenticator->getBearerToken())
                     ->timeout($this->config['http']['timeout'] ?? 30)
-                    ->connectTimeout($this->config['http']['connect_timeout'] ?? 10)
+                    ->withOptions(['connect_timeout' => $this->config['http']['connect_timeout'] ?? 10])
                     ->post($url, $body);
             } catch (\Throwable $e) {
                 throw new NetworkException("App Store Server API request failed: " . $e->getMessage(), 0, $e);
@@ -214,7 +214,7 @@ class AppStoreServerApi implements AppStoreServerApiInterface
                 $response = $this->http
                     ->withToken($this->authenticator->getBearerToken())
                     ->timeout($this->config['http']['timeout'] ?? 30)
-                    ->connectTimeout($this->config['http']['connect_timeout'] ?? 10)
+                    ->withOptions(['connect_timeout' => $this->config['http']['connect_timeout'] ?? 10])
                     ->put($url, $body);
             } catch (\Throwable $e) {
                 throw new NetworkException("App Store Server API request failed: " . $e->getMessage(), 0, $e);
