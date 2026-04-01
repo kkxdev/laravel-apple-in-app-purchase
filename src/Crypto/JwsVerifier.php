@@ -87,19 +87,37 @@ class JwsVerifier implements JwsVerifierInterface
     }
 
     /**
-     * Convert base64url-encoded DER certificates in x5c to PEM strings.
+     * Convert x5c certificate values to PEM strings.
+     *
+     * RFC 7517 §4.7 specifies x5c values as standard base64-encoded DER, but
+     * Apple's JWS tokens use base64url (no padding, '-' and '_' instead of '+'
+     * and '/'). We normalise both variants by decoding to raw DER first, then
+     * re-encoding as clean base64 for the PEM wrapper.
      *
      * @param string[] $x5c
      * @return string[] PEM-encoded certificates
      */
     private function parseCertificateChain(array $x5c): array
     {
-        return array_map(function (string $derB64): string {
-            $pem  = "-----BEGIN CERTIFICATE-----\n";
-            $pem .= chunk_split($derB64, 64, "\n");
-            $pem .= "-----END CERTIFICATE-----\n";
-            return $pem;
-        }, $x5c);
+        return array_map(function (string $derB64, int $index): string {
+            // Strip whitespace, then normalise base64url → standard base64.
+            $normalised = strtr(trim($derB64), '-_', '+/');
+            $remainder  = strlen($normalised) % 4;
+            if ($remainder !== 0) {
+                $normalised .= str_repeat('=', 4 - $remainder);
+            }
+
+            $der = base64_decode($normalised, true);
+            if ($der === false) {
+                throw new JwsVerificationException(
+                    "Failed to base64-decode x5c certificate at index {$index}."
+                );
+            }
+
+            return "-----BEGIN CERTIFICATE-----\n"
+                . chunk_split(base64_encode($der), 64, "\n")
+                . "-----END CERTIFICATE-----\n";
+        }, $x5c, array_keys($x5c));
     }
 
     /**
@@ -148,43 +166,34 @@ class JwsVerifier implements JwsVerifierInterface
     }
 
     /**
-     * Compare the chain's root certificate against the embedded Apple root CAs.
+     * Compare the chain's root certificate against the embedded Apple root CAs
+     * using SHA-256 fingerprint comparison.
      */
     private function verifyAgainstTrustedRoots(string $chainRootPem): void
     {
-        $chainRootInfo = openssl_x509_parse($chainRootPem);
-        if ($chainRootInfo === false) {
+        $chainRootResource = openssl_x509_read($chainRootPem);
+        if ($chainRootResource === false) {
             throw new JwsVerificationException('Failed to parse root certificate from JWS x5c chain.');
         }
 
+        $chainFingerprint = openssl_x509_fingerprint($chainRootResource, 'sha256');
+        if ($chainFingerprint === false) {
+            throw new JwsVerificationException('Failed to compute fingerprint of root certificate from JWS x5c chain.');
+        }
+
         foreach (AppleRootCertificateBundle::all() as $trustedRootPem) {
-            $trustedInfo = openssl_x509_parse($trustedRootPem);
-            if ($trustedInfo === false) {
+            $trustedResource = openssl_x509_read($trustedRootPem);
+            if ($trustedResource === false) {
                 continue;
             }
 
-            // Compare subject and public key fingerprints
-            if ($chainRootInfo['subject'] === $trustedInfo['subject']) {
-                $chainResource   = openssl_x509_read($chainRootPem);
-                $trustedResource = openssl_x509_read($trustedRootPem);
+            $trustedFingerprint = openssl_x509_fingerprint($trustedResource, 'sha256');
+            if ($trustedFingerprint === false) {
+                continue;
+            }
 
-                if ($chainResource === false || $trustedResource === false) {
-                    continue;
-                }
-
-                $chainKey   = openssl_pkey_get_public($chainResource);
-                $trustedKey = openssl_pkey_get_public($trustedResource);
-
-                if ($chainKey === false || $trustedKey === false) {
-                    continue;
-                }
-
-                $chainKeyDetails   = openssl_pkey_get_details($chainKey);
-                $trustedKeyDetails = openssl_pkey_get_details($trustedKey);
-
-                if ($chainKeyDetails['key'] === $trustedKeyDetails['key']) {
-                    return; // Chain root matches a trusted Apple root CA
-                }
+            if (hash_equals($chainFingerprint, $trustedFingerprint)) {
+                return; // Chain root matches a trusted Apple root CA
             }
         }
 
