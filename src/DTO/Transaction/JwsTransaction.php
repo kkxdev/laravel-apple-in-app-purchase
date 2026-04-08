@@ -29,7 +29,7 @@ class JwsTransaction
         public ?string $storefrontId,
         public ?int $price,
         public ?string $currency,
-        public ?int $offerDiscountType,
+        public ?string $offerDiscountType,
         public ?string $offerIdentifier,
         public ?int $offerType,
         public ?int $revocationDate,
@@ -67,6 +67,11 @@ class JwsTransaction
             revocationReason:             $data['revocationReason'] ?? null,
             isUpgraded:                   (bool) ($data['isUpgraded'] ?? false),
         );
+    }
+
+    public function matchesBundleId(string $bundleId): bool
+    {
+        return $this->bundleId === $bundleId;
     }
 
     public function isExpired(): bool

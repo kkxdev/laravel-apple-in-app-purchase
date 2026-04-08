@@ -318,6 +318,11 @@ try {
     echo $transaction->type; // "Auto-Renewable Subscription", "Consumable", etc.
     echo $transaction->environment; // "Production" or "Sandbox"
 
+    // Always verify the bundle ID matches your app to prevent cross-app replay attacks.
+    if (!$transaction->matchesBundleId(config('apple-iap.bundle_id'))) {
+        abort(400, 'Bundle ID mismatch.');
+    }
+
     if (!$transaction->isExpired()) {
         // Grant entitlement
     }
@@ -690,7 +695,16 @@ $mock->shouldReceive('verify')
 | `revocationReason` | `?string` | Reason for revocation |
 | `isUpgraded` | `bool` | Whether this was superseded by an upgrade |
 
-Helper methods: `isExpired()`, `isRevoked()`, `isSandbox()`, `purchaseDateAsDateTime()`, `expiresDateAsDateTime()`
+Helper methods:
+
+| Method | Signature | Description |
+|---|---|---|
+| `matchesBundleId()` | `matchesBundleId(string $bundleId): bool` | Returns `true` if the transaction's `bundleId` equals the given value. Use this to guard against cross-app transaction replay attacks. |
+| `isExpired()` | `isExpired(): bool` | Returns `true` if `expiresDate` is in the past. |
+| `isRevoked()` | `isRevoked(): bool` | Returns `true` if `revocationDate` is set. |
+| `isSandbox()` | `isSandbox(): bool` | Returns `true` when `environment` is `"Sandbox"`. |
+| `purchaseDateAsDateTime()` | `purchaseDateAsDateTime(): \DateTimeImmutable` | Returns `purchaseDate` as a `DateTimeImmutable`. |
+| `expiresDateAsDateTime()` | `expiresDateAsDateTime(): ?\DateTimeImmutable` | Returns `expiresDate` as a `DateTimeImmutable`, or `null` for non-subscriptions. |
 
 ### `JwsRenewalInfo`
 
