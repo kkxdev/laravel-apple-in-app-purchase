@@ -69,9 +69,9 @@ class JwsTransaction
         );
     }
 
-    public function matchesBundleId(string $bundleId): bool
+    public function matchesBundleId(): bool
     {
-        return $this->bundleId === $bundleId;
+        return $this->bundleId === config('apple-iap.credentials.bundle_id');
     }
 
     public function isExpired(): bool
