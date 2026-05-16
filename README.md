@@ -319,7 +319,7 @@ try {
     echo $transaction->environment; // "Production" or "Sandbox"
 
     // Always verify the bundle ID matches your app to prevent cross-app replay attacks.
-    if (!$transaction->matchesBundleId(config('apple-iap.bundle_id'))) {
+    if (!$transaction->matchesBundleId()) {
         abort(400, 'Bundle ID mismatch.');
     }
 
@@ -699,7 +699,7 @@ Helper methods:
 
 | Method | Signature | Description |
 |---|---|---|
-| `matchesBundleId()` | `matchesBundleId(string $bundleId): bool` | Returns `true` if the transaction's `bundleId` equals the given value. Use this to guard against cross-app transaction replay attacks. |
+| `matchesBundleId()` | `matchesBundleId(): bool` | Returns `true` if the transaction's `bundleId` matches `APPLE_IAP_BUNDLE_ID` from your config. Use this to guard against cross-app transaction replay attacks. |
 | `isExpired()` | `isExpired(): bool` | Returns `true` if `expiresDate` is in the past. |
 | `isRevoked()` | `isRevoked(): bool` | Returns `true` if `revocationDate` is set. |
 | `isSandbox()` | `isSandbox(): bool` | Returns `true` when `environment` is `"Sandbox"`. |

@@ -168,18 +168,11 @@ class AppStoreServerApi implements AppStoreServerApiInterface
         $this->log('debug', "GET {$url}", ['query' => $query]);
 
         return $this->execute(function () use ($url, $query): array {
-            try {
-                $response = $this->http
-                    ->withToken($this->authenticator->getBearerToken())
-                    ->timeout($this->config['http']['timeout'] ?? 30)
-                    ->withOptions(['connect_timeout' => $this->config['http']['connect_timeout'] ?? 10])
-                    ->retry(
-                        $this->config['http']['retry']['times'] ?? 3,
-                        $this->config['http']['retry']['sleep'] ?? 100,
-                    )
-                    ->get($url, $query);
-            } catch (\Throwable $e) {
-                throw new NetworkException("App Store Server API request failed: " . $e->getMessage(), 0, $e);
+            $response = $this->makeRequest('GET', $url, $query);
+
+            if ($response->status() === 401) {
+                $this->authenticator->forgetCachedToken();
+                $response = $this->makeRequest('GET', $url, $query);
             }
 
             return $this->parseResponse($response);
@@ -191,14 +184,11 @@ class AppStoreServerApi implements AppStoreServerApiInterface
         $url = $this->buildUrl($path);
 
         return $this->execute(function () use ($url, $body): array {
-            try {
-                $response = $this->http
-                    ->withToken($this->authenticator->getBearerToken())
-                    ->timeout($this->config['http']['timeout'] ?? 30)
-                    ->withOptions(['connect_timeout' => $this->config['http']['connect_timeout'] ?? 10])
-                    ->post($url, $body);
-            } catch (\Throwable $e) {
-                throw new NetworkException("App Store Server API request failed: " . $e->getMessage(), 0, $e);
+            $response = $this->makeRequest('POST', $url, $body);
+
+            if ($response->status() === 401) {
+                $this->authenticator->forgetCachedToken();
+                $response = $this->makeRequest('POST', $url, $body);
             }
 
             return $this->parseResponse($response);
@@ -210,18 +200,45 @@ class AppStoreServerApi implements AppStoreServerApiInterface
         $url = $this->buildUrl($path);
 
         return $this->execute(function () use ($url, $body): array {
-            try {
-                $response = $this->http
-                    ->withToken($this->authenticator->getBearerToken())
-                    ->timeout($this->config['http']['timeout'] ?? 30)
-                    ->withOptions(['connect_timeout' => $this->config['http']['connect_timeout'] ?? 10])
-                    ->put($url, $body);
-            } catch (\Throwable $e) {
-                throw new NetworkException("App Store Server API request failed: " . $e->getMessage(), 0, $e);
+            $response = $this->makeRequest('PUT', $url, $body);
+
+            if ($response->status() === 401) {
+                $this->authenticator->forgetCachedToken();
+                $response = $this->makeRequest('PUT', $url, $body);
             }
 
             return $this->parseResponse($response);
         });
+    }
+
+    private function makeRequest(string $method, string $url, array $data = []): \Illuminate\Http\Client\Response
+    {
+        try {
+            $pending = $this->http
+                ->withToken($this->authenticator->getBearerToken())
+                ->timeout($this->config['http']['timeout'] ?? 30)
+                ->withOptions(['connect_timeout' => $this->config['http']['connect_timeout'] ?? 10])
+                ->retry(
+                    $this->config['http']['retry']['times'] ?? 3,
+                    $this->config['http']['retry']['sleep'] ?? 100,
+                    fn (\Throwable $e) => !(
+                        $e instanceof \Illuminate\Http\Client\RequestException
+                        && $e->response->clientError()
+                    ),
+                );
+
+            return match ($method) {
+                'GET'  => $pending->get($url, $data),
+                'POST' => $pending->post($url, $data),
+                'PUT'  => $pending->put($url, $data),
+            };
+        } catch (\Illuminate\Http\Client\RequestException $e) {
+            // HTTP error response — return the response so callers can inspect
+            // the status and handle 401 token refresh or pass to parseResponse().
+            return $e->response;
+        } catch (\Throwable $e) {
+            throw new NetworkException("App Store Server API request failed: " . $e->getMessage(), 0, $e);
+        }
     }
 
     /**
