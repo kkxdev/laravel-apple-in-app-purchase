@@ -8,8 +8,21 @@ Core IAP functionality lives in the package. Subscription state management (acti
 
 | Dependency | Version |
 |---|---|
-| PHP | `^8.0` |
-| Laravel | `^8.0 \| ^9.0 \| ^10.0 \| ^11.0 \| ^12.0` |
+| PHP | `^8.0` (Laravel 13 requires PHP `^8.3`) |
+| Laravel | `^8.0 \| ^9.0 \| ^10.0 \| ^11.0 \| ^12.0 \| ^13.0` |
+
+### Laravel / PHP compatibility
+
+| Laravel | Minimum PHP | Orchestra Testbench | Supported |
+|---|---|---|---|
+| 8.x | 7.3 (package needs 8.0) | 6.x | Yes |
+| 9.x | 8.0 | 7.x | Yes |
+| 10.x | 8.1 | 8.x | Yes |
+| 11.x | 8.2 | 9.x | Yes |
+| 12.x | 8.2 | 10.x | Yes |
+| 13.x | 8.3 | 11.x | Yes |
+
+No code changes are needed when upgrading between Laravel versions — installation, configuration, and usage are identical on every supported version. Package discovery registers the service provider and facade automatically on all of them.
 
 ## Installation
 
